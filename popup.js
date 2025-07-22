@@ -24,6 +24,49 @@ async function init() {
   await loadScreenshots();
   await checkStorage();
   setupVoiceRecognition();
+  await checkRecordingState();
+  displayKeyboardShortcuts();
+}
+
+// Check if recording is active (from keyboard shortcut)
+async function checkRecordingState() {
+  try {
+    const response = await chrome.runtime.sendMessage({ action: 'getRecordingState' });
+    if (response.success && response.isRecording) {
+      isRecording = true;
+      voiceBtn.textContent = '⏹️ Stop Recording';
+      voiceBtn.style.background = '#4caf50';
+      transcriptDiv.style.display = 'block';
+      transcriptText.textContent = response.currentTranscript || 'Recording via keyboard shortcut...';
+      transcriptText.style.color = '#333';
+      
+      // Start speech recognition to sync with keyboard recording
+      if (recognition && !recognition.started) {
+        try {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          recognition.start();
+        } catch (e) {
+          console.log('Could not start speech recognition:', e);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error checking recording state:', error);
+  }
+}
+
+// Display keyboard shortcuts info
+function displayKeyboardShortcuts() {
+  const shortcutsDiv = document.createElement('div');
+  shortcutsDiv.style.cssText = 'margin-top: 10px; padding: 8px; background: #e8f5e9; border-radius: 4px; font-size: 11px;';
+  shortcutsDiv.innerHTML = `
+    <strong>Keyboard Shortcuts:</strong><br>
+    Alt+Shift+S - Full screenshot<br>
+    Alt+Shift+R - Region screenshot<br>
+    Alt+Shift+V - Toggle recording<br>
+    Alt+Shift+D - Open dashboard
+  `;
+  document.body.appendChild(shortcutsDiv);
 }
 
 // Check storage usage
@@ -289,6 +332,40 @@ function stopRecording() {
     statusDiv.textContent = 'Transcript saved';
   }
 }
+
+// Clear all data button
+document.getElementById('clear-data-btn').addEventListener('click', async () => {
+  if (confirm('This will delete all sessions, screenshots, and transcripts. Are you sure?')) {
+    try {
+      // Clear all storage
+      await chrome.storage.local.clear();
+      
+      // Reset UI
+      currentSession = null;
+      sessionNameDiv.textContent = 'No active session';
+      sessionStatsDiv.textContent = 'Click "New Session" to start';
+      screenshotsDiv.innerHTML = '<p style="text-align: center; color: #999;">No screenshots yet</p>';
+      statusDiv.textContent = 'All data cleared';
+      
+      // Update storage info
+      await checkStorage();
+      
+      // Notify background script
+      chrome.runtime.sendMessage({ action: 'clearAllData' });
+    } catch (error) {
+      console.error('Error clearing data:', error);
+      statusDiv.textContent = 'Error clearing data';
+    }
+  }
+});
+
+// Privacy link handler
+document.getElementById('privacy-link').addEventListener('click', (e) => {
+  e.preventDefault();
+  // Open your privacy policy URL here
+  // chrome.tabs.create({ url: 'YOUR_PRIVACY_POLICY_URL' });
+  alert('Privacy Policy: This extension captures screenshots of web pages when you activate it. All data is stored locally on your device and is never sent to external servers. You control what is captured and when.');
+});
 
 // Initialize on load
 init();
